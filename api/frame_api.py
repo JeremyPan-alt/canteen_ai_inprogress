@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import queue
+import base64
 import time
 from pathlib import Path
 from typing import Any, Dict
@@ -68,16 +69,24 @@ def latest_frame(name: str) -> Response:
 
 @frame_api.get("/cameras/<name>/stream")
 def camera_stream(name: str) -> Response:
+    manager = _camera_manager()
+    logger = current_app.logger
+    jpeg_quality = int(current_app.config.get("FRAME_JPEG_QUALITY", 85))
+
     def generate() -> Any:
         while True:
             try:
-                packet = _camera_manager().get_latest_frame(name)
-                frame_bytes = _encode_jpeg(packet.frame) if packet is not None else _placeholder_jpeg(name)
+                packet = manager.get_latest_frame(name)
+                frame_bytes = (
+                    _encode_jpeg(packet.frame, jpeg_quality)
+                    if packet is not None
+                    else _placeholder_jpeg(name, "waiting for frame", jpeg_quality)
+                )
             except KeyError:
-                frame_bytes = _placeholder_jpeg(name, "unknown camera")
+                frame_bytes = _placeholder_jpeg(name, "unknown camera", jpeg_quality)
             except Exception:
-                current_app.logger.exception("Failed to stream camera %s", name)
-                frame_bytes = _placeholder_jpeg(name, "stream error")
+                logger.exception("Failed to stream camera %s", name)
+                frame_bytes = _placeholder_jpeg(name, "stream error", jpeg_quality)
             yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n"
             time.sleep(0.1)
 
@@ -167,25 +176,41 @@ def capture_status() -> Response:
     )
 
 
-def _encode_jpeg(frame: Any) -> bytes:
+def _encode_jpeg(frame: Any, quality: int | None = None) -> bytes:
     import cv2  # type: ignore
 
-    quality = int(current_app.config.get("FRAME_JPEG_QUALITY", 85))
+    if quality is None:
+        quality = int(current_app.config.get("FRAME_JPEG_QUALITY", 85))
     ok, encoded = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
     if not ok:
         raise RuntimeError("failed to encode frame")
     return encoded.tobytes()
 
 
-def _placeholder_jpeg(camera_name: str, message: str = "waiting for frame") -> bytes:
-    import cv2  # type: ignore
-    import numpy as np  # type: ignore
+def _placeholder_jpeg(camera_name: str, message: str = "waiting for frame", quality: int = 85) -> bytes:
+    try:
+        import cv2  # type: ignore
+        import numpy as np  # type: ignore
+    except ModuleNotFoundError:
+        return _fallback_jpeg()
 
     frame = np.zeros((360, 640, 3), dtype=np.uint8)
     cv2.putText(frame, f"Camera: {camera_name}", (40, 150), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (220, 220, 220), 2)
     cv2.putText(frame, message, (40, 205), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 180, 255), 2)
     cv2.putText(frame, "Check config/camera.yaml", (40, 260), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (160, 160, 160), 2)
-    return _encode_jpeg(frame)
+    return _encode_jpeg(frame, quality)
+
+
+def _fallback_jpeg() -> bytes:
+    """Tiny black JPEG used only when OpenCV is unavailable."""
+    return base64.b64decode(
+        b"/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////"
+        b"2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/"
+        b"xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAH/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAEFAqf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAEDAQE/ASP/"
+        b"xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAECAQE/ASP/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAY/Ar//xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAE/IV//"
+        b"2gAMAwEAAgADAAAAEP/EFBQRAQAAAAAAAAAAAAAAAAAAARD/2gAIAQMBAT8QH//EFBQRAQAAAAAAAAAAAAAAAAAAARD/2gAIAQIBAT8QH//EFBABAQAAAAAAAAAAAAAAAAAAARD/"
+        b"2gAIAQEAAT8QH//Z"
+    )
 
 
 def _camera_manager() -> Any:
