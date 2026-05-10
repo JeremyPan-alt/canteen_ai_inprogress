@@ -4,6 +4,25 @@ runtime:
   snapshot_dir: logs/snapshots
   frame_jpeg_quality: 85
 
+detection:
+  # Flask posts finalized intake JSON here after the YOLO and OCR workers both
+  # finish. Leave empty to only write logs/snapshots/<batch_id>/metadata.json.
+  spring_backend_url: http://localhost:9999
+  yolo:
+    enabled: true
+    weights: weights/vegetables.pt
+    confidence: 0.45
+    image_size: 640
+    # Jetson can use "0"; Windows CPU-only can leave this empty.
+    device:
+  ocr:
+    enabled: true
+    # Options: pytesseract, easyocr, none.
+    backend: pytesseract
+    language: eng
+    digit_regex: "\\d+(?:\\.\\d+)?"
+    easyocr_gpu: false
+
 cameras:
   # Windows/generic USB camera example. On Windows, api_preference=dshow usually
   # opens USB cameras faster than the OpenCV default backend.

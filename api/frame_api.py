@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import queue
+import time
+from pathlib import Path
 from typing import Any, Dict
 
 from flask import Blueprint, Response, current_app, jsonify, request
@@ -29,6 +31,24 @@ def camera_status() -> Response:
     return jsonify(_camera_manager().status())
 
 
+@frame_api.get("/models")
+def list_models() -> Response:
+    weights_dir = Path(current_app.root_path) / "weights"
+    weights = []
+    if weights_dir.exists():
+        weights = sorted(
+            path.name
+            for path in weights_dir.iterdir()
+            if path.is_file() and path.suffix.lower() in {".pt", ".onnx", ".engine"}
+        )
+    return jsonify(
+        {
+            "weights": weights,
+            "ocr_backends": ["pytesseract", "easyocr", "none"],
+        }
+    )
+
+
 @frame_api.get("/cameras/<name>/frame")
 def latest_frame(name: str) -> Response:
     packet = _camera_manager().get_latest_frame(name)
@@ -46,6 +66,22 @@ def latest_frame(name: str) -> Response:
     )
 
 
+@frame_api.get("/cameras/<name>/stream")
+def camera_stream(name: str) -> Response:
+    def generate() -> Any:
+        while True:
+            packet = _camera_manager().get_latest_frame(name)
+            if packet is not None:
+                yield (
+                    b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
+                    + _encode_jpeg(packet.frame)
+                    + b"\r\n"
+                )
+            time.sleep(0.1)
+
+    return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
+
+
 @frame_api.post("/cameras/<name>/snapshot")
 def camera_snapshot(name: str) -> Response:
     packet = _camera_manager().capture_snapshot(name)
@@ -61,6 +97,7 @@ def trigger_manual_capture() -> Response:
         result = _capture_service().trigger_manual_capture(
             recorded_by=payload.get("recorded_by"),
             batch_id=payload.get("batch_id"),
+            metadata=_capture_metadata(payload),
         )
     except queue.Full:
         return jsonify({"error": "capture scheduler queue is full"}), 429
@@ -74,6 +111,7 @@ def trigger_intrusion_capture() -> Response:
         result = _capture_service().trigger_intrusion_capture(
             recorded_by=payload.get("recorded_by"),
             batch_id=payload.get("batch_id"),
+            metadata=_capture_metadata(payload),
         )
     except queue.Full:
         return jsonify({"error": "capture scheduler queue is full"}), 429
@@ -88,6 +126,21 @@ def capture_now() -> Response:
             trigger_type=str(payload.get("trigger_type", "manual")),
             recorded_by=payload.get("recorded_by"),
             batch_id=payload.get("batch_id"),
+            metadata=_capture_metadata(payload),
+        )
+    )
+    return jsonify(result)
+
+
+@frame_api.post("/capture/wait")
+def capture_and_wait() -> Response:
+    payload = _json_payload()
+    result = _capture_service().capture_and_wait(
+        CaptureRequest(
+            trigger_type=str(payload.get("trigger_type", "manual")),
+            recorded_by=payload.get("recorded_by"),
+            batch_id=payload.get("batch_id"),
+            metadata=_capture_metadata(payload),
         )
     )
     return jsonify(result)
@@ -99,6 +152,17 @@ def last_capture() -> Response:
     if result is None:
         return jsonify({"result": None}), 404
     return jsonify(result)
+
+
+@frame_api.get("/capture/status")
+def capture_status() -> Response:
+    service = _capture_service()
+    return jsonify(
+        {
+            "pending_jobs": service.get_pending_count(),
+            "last_result": service.get_last_result(),
+        }
+    )
 
 
 def _encode_jpeg(frame: Any) -> bytes:
@@ -121,3 +185,11 @@ def _capture_service() -> Any:
 
 def _json_payload() -> Dict[str, Any]:
     return request.get_json(silent=True) or {}
+
+
+def _capture_metadata(payload: Dict[str, Any]) -> Dict[str, Any]:
+    metadata = dict(payload.get("metadata") or {})
+    for key in ("supplier", "remark", "operator_id"):
+        if key in payload:
+            metadata[key] = payload[key]
+    return metadata

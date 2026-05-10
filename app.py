@@ -14,6 +14,7 @@ from flask import Flask
 from api.frame_api import frame_api
 from camera.manager import CameraManager
 from services.capture_service import CaptureService
+from services.model_inference import DetectionSettings
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -26,15 +27,19 @@ def create_app(config_path: str | os.PathLike[str] | None = None) -> Flask:
     path = Path(config_path or os.getenv("CAMERA_CONFIG", DEFAULT_CONFIG_PATH))
     raw_config = _load_yaml(path)
     runtime_config = raw_config.get("runtime", {})
+    detection_config = raw_config.get("detection", {})
 
     app = Flask(__name__)
     app.config["FRAME_JPEG_QUALITY"] = int(runtime_config.get("frame_jpeg_quality", 85))
 
     camera_manager = CameraManager.from_yaml(path)
     snapshot_root = BASE_DIR / str(runtime_config.get("snapshot_dir", "logs/snapshots"))
+    detection_settings = DetectionSettings.from_config(detection_config)
     capture_service = CaptureService(
         camera_manager=camera_manager,
         snapshot_root=snapshot_root,
+        detection_settings=detection_settings,
+        project_root=BASE_DIR,
         entrance_camera=str(runtime_config.get("entrance_camera", "entrance")),
         scale_camera=str(runtime_config.get("scale_camera", "scale")),
     )
