@@ -20,10 +20,9 @@ public class IntakeProxyController {
     private final String flaskBaseUrl;
 
     public IntakeProxyController(
-            RestClient restClient,
             @Value("${flask.base-url:http://localhost:5000}") String flaskBaseUrl
     ) {
-        this.restClient = restClient;
+        this.restClient = RestClient.builder().build();
         this.flaskBaseUrl = flaskBaseUrl;
     }
 
