@@ -1,0 +1,9 @@
+spring:
+  application:
+    name: canteen-intake-backend
+
+server:
+  port: 9999
+
+flask:
+  base-url: http://localhost:5000

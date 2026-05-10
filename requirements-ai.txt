@@ -1,0 +1,4 @@
+# Optional AI runtime dependencies. Install these on machines that run YOLO/OCR.
+ultralytics
+pytesseract
+easyocr
