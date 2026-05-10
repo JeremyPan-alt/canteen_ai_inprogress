@@ -162,6 +162,14 @@ The `intake_records` table is created automatically at startup if it does not
 exist. A matching schema is also kept at
 `backend/src/main/resources/mysql-schema.sql`.
 
+If `mvn spring-boot:run` only prints `Process terminated with exit code: 1`,
+scroll up to the first `Caused by:` line. The most common causes are:
+
+- MySQL is not running on the host/port in `MYSQL_URL`.
+- `MYSQL_USERNAME` / `MYSQL_PASSWORD` is incorrect.
+- The MySQL user cannot create the `canteen_intake` database or tables.
+- Port `9999` is already occupied.
+
 Vue frontend:
 
 ```bash

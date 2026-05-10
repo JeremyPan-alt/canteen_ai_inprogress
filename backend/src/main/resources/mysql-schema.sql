@@ -5,10 +5,10 @@ CREATE TABLE IF NOT EXISTS intake_records (
   trigger_type VARCHAR(32),
   recorded_by VARCHAR(128),
   supplier VARCHAR(255),
-  vegetables JSON,
+  vegetables LONGTEXT,
   weight DECIMAL(10, 3),
-  captured_at TIMESTAMP,
-  raw_json JSON,
+  captured_at TIMESTAMP NULL,
+  raw_json LONGTEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

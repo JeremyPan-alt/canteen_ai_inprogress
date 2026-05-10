@@ -33,22 +33,31 @@ public class IntakeRecordRepository {
 
     @PostConstruct
     public void initializeSchema() {
-        jdbcTemplate.execute("""
-                CREATE TABLE IF NOT EXISTS intake_records (
-                  id VARCHAR(64) PRIMARY KEY,
-                  job_id VARCHAR(64),
-                  batch_id VARCHAR(64) NOT NULL,
-                  trigger_type VARCHAR(32),
-                  recorded_by VARCHAR(128),
-                  supplier VARCHAR(255),
-                  vegetables JSON,
-                  weight DECIMAL(10, 3),
-                  captured_at TIMESTAMP,
-                  raw_json JSON,
-                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-                )
-                """);
+        try {
+            jdbcTemplate.execute("""
+                    CREATE TABLE IF NOT EXISTS intake_records (
+                      id VARCHAR(64) PRIMARY KEY,
+                      job_id VARCHAR(64),
+                      batch_id VARCHAR(64) NOT NULL,
+                      trigger_type VARCHAR(32),
+                      recorded_by VARCHAR(128),
+                      supplier VARCHAR(255),
+                      vegetables LONGTEXT,
+                      weight DECIMAL(10, 3),
+                      captured_at TIMESTAMP NULL,
+                      raw_json LONGTEXT,
+                      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                    """);
+        } catch (Exception exc) {
+            throw new IllegalStateException(
+                    "Failed to initialize MySQL table 'intake_records'. "
+                            + "Please check MYSQL_URL/MYSQL_USERNAME/MYSQL_PASSWORD, ensure MySQL is running, "
+                            + "and confirm the user can create tables.",
+                    exc
+            );
+        }
     }
 
     public IntakeRecord save(IntakeRecord record) {
