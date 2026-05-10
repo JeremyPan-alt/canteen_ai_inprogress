@@ -37,7 +37,8 @@ cameras:
     reconnect_interval_seconds: 2
     read_sleep_seconds: 0.01
     extra:
-      api_preference: dshow
+      api_preference: auto
+      buffer_size: 1
 
   - name: scale
     role: scale_display
@@ -50,7 +51,26 @@ cameras:
     reconnect_interval_seconds: 2
     read_sleep_seconds: 0.01
     extra:
-      api_preference: dshow
+      api_preference: auto
+      buffer_size: 1
+
+  # RTSP input example. Use this when Windows/Jetson receives pushed camera
+  # streams instead of directly opening local USB devices.
+  # - name: entrance
+  #   role: intake_area
+  #   backend: opencv
+  #   enabled: true
+  #   source: "rtsp://user:password@192.168.1.10:554/stream1"
+  #   width: 1280
+  #   height: 720
+  #   fps: 25
+  #   reconnect_interval_seconds: 2
+  #   read_sleep_seconds: 0.01
+  #   extra:
+  #     api_preference: ffmpeg
+  #     buffer_size: 1
+  #     open_timeout_msec: 5000
+  #     read_timeout_msec: 5000
 
   # Jetson CSI camera example. Switch backend to gstreamer and tune sensor-id.
   # - name: entrance

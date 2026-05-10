@@ -57,3 +57,7 @@ export function getRecords() {
 export function deleteRecord(id: string) {
   return spring.delete(`/intake-records/${id}`);
 }
+
+export function updateRecord(id: string, record: IntakeRecord) {
+  return spring.put(`/intake-records/${id}`, record);
+}

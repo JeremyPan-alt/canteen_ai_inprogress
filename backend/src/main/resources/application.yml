@@ -1,6 +1,14 @@
 spring:
   application:
     name: canteen-intake-backend
+  datasource:
+    url: ${MYSQL_URL:jdbc:mysql://localhost:3306/canteen_intake?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&createDatabaseIfNotExist=true}
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD:123456}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  sql:
+    init:
+      mode: never
 
 server:
   port: 9999

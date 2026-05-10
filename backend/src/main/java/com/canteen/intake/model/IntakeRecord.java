@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonAnyGetter;
 import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonSetter;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -121,7 +122,12 @@ public class IntakeRecord {
         return capturedAt;
     }
 
-    public void setCapturedAt(Object capturedAt) {
+    public void setCapturedAt(Instant capturedAt) {
+        this.capturedAt = capturedAt == null ? Instant.now() : capturedAt;
+    }
+
+    @JsonSetter("captured_at")
+    public void setCapturedAtFromJson(Object capturedAt) {
         if (capturedAt instanceof Number number) {
             this.capturedAt = Instant.ofEpochMilli((long) (number.doubleValue() * 1000));
         } else if (capturedAt instanceof String text && !text.isBlank()) {

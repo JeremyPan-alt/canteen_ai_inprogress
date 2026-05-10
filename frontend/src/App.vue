@@ -86,13 +86,47 @@
           <el-table-column prop="recordedBy" label="记录人" width="130" />
           <el-table-column prop="supplier" label="供应商/备注" min-width="150" />
           <el-table-column prop="capturedAt" label="时间" min-width="180" />
-          <el-table-column label="操作" width="100">
+          <el-table-column label="操作" width="160">
             <template #default="scope">
+              <el-button text type="primary" @click="openEditDialog(scope.row)">修改</el-button>
               <el-button text type="danger" @click="removeRecord(scope.row.id)">删除</el-button>
             </template>
           </el-table-column>
         </el-table>
       </el-card>
+
+      <el-dialog v-model="editVisible" title="修改进货记录" width="560px">
+        <el-form :model="editForm" label-width="110px">
+          <el-form-item label="批次号">
+            <el-input v-model="editForm.batchId" />
+          </el-form-item>
+          <el-form-item label="触发方式">
+            <el-select v-model="editForm.triggerType" style="width: 100%">
+              <el-option label="拍照识别" value="manual" />
+              <el-option label="入侵触发" value="intrusion" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="菜品种类">
+            <el-input v-model="editVegetablesText" placeholder="多个菜品用逗号分隔，例如 tomato,potato" />
+          </el-form-item>
+          <el-form-item label="重量(kg)">
+            <el-input-number v-model="editForm.weight" :min="0" :precision="3" style="width: 100%" />
+          </el-form-item>
+          <el-form-item label="记录人">
+            <el-input v-model="editForm.recordedBy" />
+          </el-form-item>
+          <el-form-item label="供应商/备注">
+            <el-input v-model="editForm.supplier" />
+          </el-form-item>
+          <el-form-item label="时间">
+            <el-date-picker v-model="editCapturedAt" type="datetime" style="width: 100%" />
+          </el-form-item>
+        </el-form>
+        <template #footer>
+          <el-button @click="editVisible = false">取消</el-button>
+          <el-button type="primary" @click="saveEditedRecord">保存</el-button>
+        </template>
+      </el-dialog>
     </el-main>
   </el-container>
 </template>
@@ -108,6 +142,7 @@ import {
   getRecords,
   triggerIntrusionCapture,
   triggerManualCapture,
+  updateRecord,
   type IntakeRecord,
 } from './api';
 
@@ -130,10 +165,21 @@ const cameraStatus = ref<Record<string, { connected: boolean; running: boolean }
 const pendingJobs = ref(0);
 const lastResult = ref<FlaskCaptureResult | null>(null);
 const records = ref<IntakeRecord[]>([]);
+const editVisible = ref(false);
+const editForm = ref<IntakeRecord>({
+  id: '',
+  batchId: '',
+  triggerType: 'manual',
+  vegetables: [],
+  capturedAt: '',
+});
+const editVegetablesText = ref('');
+const editCapturedAt = ref<Date | null>(null);
 
+const flaskApiPrefix = import.meta.env.VITE_FLASK_API_PREFIX || '/flask-api';
 const streamVersion = ref(Date.now());
-const entranceStream = computed(() => `/flask-api/cameras/entrance/stream?v=${streamVersion.value}`);
-const scaleStream = computed(() => `/flask-api/cameras/scale/stream?v=${streamVersion.value}`);
+const entranceStream = computed(() => `${flaskApiPrefix}/cameras/entrance/stream?v=${streamVersion.value}`);
+const scaleStream = computed(() => `${flaskApiPrefix}/cameras/scale/stream?v=${streamVersion.value}`);
 
 function formatConfidence(value: number) {
   return (value / 100).toFixed(2);
@@ -215,6 +261,32 @@ async function removeRecord(id?: string) {
   if (!id) return;
   await deleteRecord(id);
   ElMessage.success('记录已删除');
+  await loadRecords();
+}
+
+function openEditDialog(row: IntakeRecord) {
+  editForm.value = {
+    ...row,
+    vegetables: [...(row.vegetables || [])],
+  };
+  editVegetablesText.value = (row.vegetables || []).join(',');
+  editCapturedAt.value = row.capturedAt ? new Date(row.capturedAt) : new Date();
+  editVisible.value = true;
+}
+
+async function saveEditedRecord() {
+  if (!editForm.value.id) return;
+  const updated: IntakeRecord = {
+    ...editForm.value,
+    vegetables: editVegetablesText.value
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean),
+    capturedAt: (editCapturedAt.value || new Date()).toISOString(),
+  };
+  await updateRecord(editForm.value.id, updated);
+  ElMessage.success('记录已更新');
+  editVisible.value = false;
   await loadRecords();
 }
 

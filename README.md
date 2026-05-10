@@ -103,7 +103,24 @@ Windows USB cameras usually use:
 backend: opencv
 source: 0
 extra:
-  api_preference: dshow
+  api_preference: auto
+  buffer_size: 1
+```
+
+If a Windows test machine only has one camera, disable the missing second camera
+or point it to a real RTSP stream. Otherwise OpenCV may repeatedly log backend
+warnings such as invalid/null capture handles while trying to reconnect.
+
+RTSP push/relay streams can use the same OpenCV backend:
+
+```yaml
+backend: opencv
+source: "rtsp://user:password@192.168.1.10:554/stream1"
+extra:
+  api_preference: ffmpeg
+  buffer_size: 1
+  open_timeout_msec: 5000
+  read_timeout_msec: 5000
 ```
 
 Jetson CSI cameras use:
@@ -132,12 +149,31 @@ cd backend
 mvn spring-boot:run
 ```
 
+The SpringBoot backend writes intake records to MySQL. Defaults are configured
+for local development and can be overridden with environment variables:
+
+```bash
+export MYSQL_URL="jdbc:mysql://localhost:3306/canteen_intake?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&createDatabaseIfNotExist=true"
+export MYSQL_USERNAME="root"
+export MYSQL_PASSWORD="123456"
+```
+
+The `intake_records` table is created automatically at startup if it does not
+exist. A matching schema is also kept at
+`backend/src/main/resources/mysql-schema.sql`.
+
 Vue frontend:
 
 ```bash
 cd frontend
 npm install
 npm run dev
+```
+
+If the Vue app is not served by Vite's dev proxy, set the Flask API prefix:
+
+```bash
+VITE_FLASK_API_PREFIX=http://localhost:5000/api npm run dev
 ```
 
 Optional environment variables:
@@ -172,6 +208,7 @@ SpringBoot service:
 - `GET /api/intake/cameras/status`
 - `POST /api/intake-records`
 - `GET /api/intake-records`
+- `PUT /api/intake-records/{id}`
 - `DELETE /api/intake-records/{id}`
 
 Manual capture body example:
@@ -190,5 +227,6 @@ Manual capture body example:
 
 Snapshots are written under `logs/snapshots/<batch_id>/` with a `metadata.json`
 file that records camera metadata, YOLO detections, OCR weight, intake items and
-operator metadata. A MySQL table sketch is available at
-`backend/src/main/resources/mysql-schema.sql` for the next persistence step.
+operator metadata. SpringBoot persists the finalized records to MySQL, and the
+Vue records table supports editing incorrect vegetable/weight/operator/supplier
+data through the update endpoint.

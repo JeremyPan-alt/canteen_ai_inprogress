@@ -70,13 +70,15 @@ def latest_frame(name: str) -> Response:
 def camera_stream(name: str) -> Response:
     def generate() -> Any:
         while True:
-            packet = _camera_manager().get_latest_frame(name)
-            if packet is not None:
-                yield (
-                    b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
-                    + _encode_jpeg(packet.frame)
-                    + b"\r\n"
-                )
+            try:
+                packet = _camera_manager().get_latest_frame(name)
+                frame_bytes = _encode_jpeg(packet.frame) if packet is not None else _placeholder_jpeg(name)
+            except KeyError:
+                frame_bytes = _placeholder_jpeg(name, "unknown camera")
+            except Exception:
+                current_app.logger.exception("Failed to stream camera %s", name)
+                frame_bytes = _placeholder_jpeg(name, "stream error")
+            yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n"
             time.sleep(0.1)
 
     return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
@@ -173,6 +175,17 @@ def _encode_jpeg(frame: Any) -> bytes:
     if not ok:
         raise RuntimeError("failed to encode frame")
     return encoded.tobytes()
+
+
+def _placeholder_jpeg(camera_name: str, message: str = "waiting for frame") -> bytes:
+    import cv2  # type: ignore
+    import numpy as np  # type: ignore
+
+    frame = np.zeros((360, 640, 3), dtype=np.uint8)
+    cv2.putText(frame, f"Camera: {camera_name}", (40, 150), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (220, 220, 220), 2)
+    cv2.putText(frame, message, (40, 205), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 180, 255), 2)
+    cv2.putText(frame, "Check config/camera.yaml", (40, 260), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (160, 160, 160), 2)
+    return _encode_jpeg(frame)
 
 
 def _camera_manager() -> Any:

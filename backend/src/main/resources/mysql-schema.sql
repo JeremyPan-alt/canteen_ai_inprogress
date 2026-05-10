@@ -8,5 +8,7 @@ CREATE TABLE IF NOT EXISTS intake_records (
   vegetables JSON,
   weight DECIMAL(10, 3),
   captured_at TIMESTAMP,
-  raw_json JSON
+  raw_json JSON,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
