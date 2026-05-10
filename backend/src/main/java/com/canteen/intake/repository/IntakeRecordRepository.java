@@ -121,7 +121,6 @@ public class IntakeRecordRepository {
         record.setSupplier(rs.getString("supplier"));
         record.setVegetables(fromJson(rs.getString("vegetables"), new TypeReference<List<String>>() {
         }, new ArrayList<>()));
-        }));
         double weight = rs.getDouble("weight");
         record.setWeight(rs.wasNull() ? null : weight);
         Timestamp capturedAt = rs.getTimestamp("captured_at");
