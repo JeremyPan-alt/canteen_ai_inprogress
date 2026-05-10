@@ -20,6 +20,7 @@
           <el-button type="primary" :loading="capturing" @click="manualCapture">拍照识别</el-button>
           <el-button type="warning" :loading="capturing" @click="intrusionCapture">模拟入侵触发</el-button>
           <el-button @click="refreshAll">刷新状态</el-button>
+          <el-button @click="reloadStreams">重连视频流</el-button>
         </div>
       </el-card>
 
@@ -236,25 +237,41 @@ async function submitCapture(type: 'manual' | 'intrusion') {
 }
 
 async function loadCameraStatus() {
-  const response = await getCameraStatus();
-  cameraStatus.value = response.data?.cameras || {};
+  try {
+    const response = await getCameraStatus();
+    cameraStatus.value = response.data?.cameras || {};
+  } catch (error) {
+    console.warn('加载摄像头状态失败', error);
+  }
 }
 
 async function loadCaptureStatus() {
-  const response = await getCaptureStatus();
-  pendingJobs.value = response.data?.pending_jobs || 0;
-  lastResult.value = response.data?.last_result || null;
+  try {
+    const response = await getCaptureStatus();
+    pendingJobs.value = response.data?.pending_jobs || 0;
+    lastResult.value = response.data?.last_result || null;
+  } catch (error) {
+    console.warn('加载识别状态失败', error);
+  }
 }
 
 async function loadRecords() {
-  const response = await getRecords();
-  records.value = response.data?.data || [];
+  try {
+    const response = await getRecords();
+    records.value = response.data?.data || [];
+  } catch (error) {
+    console.warn('加载进货记录失败，请确认 SpringBoot 后端已启动', error);
+  }
 }
 
 async function loadModels() {
-  const response = await getModelOptions();
-  modelWeights.value = response.data?.weights || [];
-  selectedWeight.value = modelWeights.value[0] || '';
+  try {
+    const response = await getModelOptions();
+    modelWeights.value = response.data?.weights || [];
+    selectedWeight.value = modelWeights.value[0] || '';
+  } catch (error) {
+    console.warn('加载模型列表失败', error);
+  }
 }
 
 async function removeRecord(id?: string) {
@@ -291,12 +308,15 @@ async function saveEditedRecord() {
 }
 
 async function refreshAll() {
+  await Promise.allSettled([loadCameraStatus(), loadCaptureStatus(), loadRecords()]);
+}
+
+function reloadStreams() {
   streamVersion.value = Date.now();
-  await Promise.all([loadCameraStatus(), loadCaptureStatus(), loadRecords()]);
 }
 
 onMounted(async () => {
-  await Promise.all([loadModels(), refreshAll()]);
+  await Promise.allSettled([loadModels(), refreshAll()]);
   window.setInterval(loadCaptureStatus, 3000);
 });
 </script>

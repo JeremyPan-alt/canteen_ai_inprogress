@@ -39,7 +39,7 @@ export function triggerIntrusionCapture(payload: CapturePayload) {
 }
 
 export function getCameraStatus() {
-  return spring.get('/intake/cameras/status');
+  return flask.get('/cameras/status');
 }
 
 export function getCaptureStatus() {

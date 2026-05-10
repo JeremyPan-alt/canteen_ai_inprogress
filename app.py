@@ -64,6 +64,14 @@ def _configure_logging() -> None:
         level=os.getenv("LOG_LEVEL", "INFO"),
         format="%(asctime)s %(levelname)s [%(threadName)s] %(name)s: %(message)s",
     )
+    if os.getenv("LOG_STREAM_ACCESS", "0") != "1":
+        logging.getLogger("werkzeug").addFilter(_StreamAccessFilter())
+
+
+class _StreamAccessFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = record.getMessage()
+        return not ("/api/cameras/" in message and "/stream" in message)
 
 
 def _load_yaml(path: Path) -> Dict[str, Any]:
