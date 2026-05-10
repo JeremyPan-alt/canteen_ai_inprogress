@@ -26,9 +26,9 @@ public class IntakeRecordRepository {
     private final ObjectMapper objectMapper;
     private final RowMapper<IntakeRecord> rowMapper = this::mapRow;
 
-    public IntakeRecordRepository(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
+    public IntakeRecordRepository(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
-        this.objectMapper = objectMapper;
+        this.objectMapper = new ObjectMapper();
     }
 
     @PostConstruct

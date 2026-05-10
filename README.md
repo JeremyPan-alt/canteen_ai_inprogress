@@ -60,6 +60,25 @@ project/
 └── logs/
 ```
 
+## Runtime architecture
+
+The system is split into three services:
+
+1. **Flask camera/inference service** (`app.py`)
+   - opens the two cameras;
+   - keeps one latest-frame buffer for each camera;
+   - owns YOLO and OCR worker threads;
+   - writes snapshot metadata under `logs/snapshots/`;
+   - posts finalized intake JSON to SpringBoot.
+2. **SpringBoot record service** (`backend/`)
+   - proxies frontend capture commands to Flask;
+   - stores finalized intake records in MySQL;
+   - exposes list/update/delete APIs for the Vue table.
+3. **Vue frontend** (`frontend/`)
+   - shows live camera streams;
+   - triggers manual/intrusion capture;
+   - shows and edits intake records.
+
 ## Install
 
 Base Python dependencies:
@@ -81,68 +100,279 @@ OpenCV installation differs by platform:
   `python3-opencv` from the Jetson/L4T packages. Confirm GStreamer support with
   `cv2.getBuildInformation()`.
 
-## Configure cameras
+## MySQL setup
 
-Edit `config/camera.yaml`. Besides cameras, it also configures YOLO/OCR:
+The SpringBoot service needs MySQL before it can store records. The application
+can create the table automatically at startup, but the database/user must be
+reachable and must have permission to create tables.
+
+### Option A: let SpringBoot create the table
+
+Create the database and grant privileges once:
+
+```sql
+CREATE DATABASE IF NOT EXISTS canteen_intake
+  DEFAULT CHARACTER SET utf8mb4
+  DEFAULT COLLATE utf8mb4_unicode_ci;
+
+CREATE USER IF NOT EXISTS 'canteen'@'%' IDENTIFIED BY 'canteen123';
+GRANT ALL PRIVILEGES ON canteen_intake.* TO 'canteen'@'%';
+FLUSH PRIVILEGES;
+```
+
+Then configure `backend/src/main/resources/application.yml` or environment
+variables:
+
+```bash
+export MYSQL_URL="jdbc:mysql://localhost:3306/canteen_intake?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&createDatabaseIfNotExist=true"
+export MYSQL_USERNAME="canteen"
+export MYSQL_PASSWORD="canteen123"
+```
+
+### Option B: manually create the table first
+
+Use this SQL if you prefer to create the table yourself:
+
+```sql
+CREATE DATABASE IF NOT EXISTS canteen_intake
+  DEFAULT CHARACTER SET utf8mb4
+  DEFAULT COLLATE utf8mb4_unicode_ci;
+
+USE canteen_intake;
+
+CREATE TABLE IF NOT EXISTS intake_records (
+  id VARCHAR(64) PRIMARY KEY,
+  job_id VARCHAR(64),
+  batch_id VARCHAR(64) NOT NULL,
+  trigger_type VARCHAR(32),
+  recorded_by VARCHAR(128),
+  supplier VARCHAR(255),
+  vegetables LONGTEXT,
+  weight DECIMAL(10, 3),
+  captured_at TIMESTAMP NULL,
+  raw_json LONGTEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
+
+The same table definition is kept in
+`backend/src/main/resources/mysql-schema.sql`.
+
+## Configure cameras and AI
+
+All camera, YOLO, OCR and snapshot settings are in:
+
+```text
+config/camera.yaml
+```
+
+### Runtime section
+
+```yaml
+runtime:
+  entrance_camera: entrance
+  scale_camera: scale
+  snapshot_dir: logs/snapshots
+  frame_jpeg_quality: 85
+```
+
+- `entrance_camera`: camera name for the intake/receiving area.
+- `scale_camera`: camera name for the weighing scale display.
+- `snapshot_dir`: where captured images and `metadata.json` are stored.
+- `frame_jpeg_quality`: JPEG quality for live frontend streams.
+
+### YOLO model configuration
+
+Put your trained vegetable YOLO model under:
+
+```text
+weights/
+```
+
+For example:
+
+```text
+weights/vegetables.pt
+```
+
+Then edit:
 
 ```yaml
 detection:
   spring_backend_url: http://localhost:9999
   yolo:
+    enabled: true
     weights: weights/vegetables.pt
     confidence: 0.45
     image_size: 640
-  ocr:
-    backend: pytesseract
-    language: eng
+    device:
 ```
 
-Windows USB cameras usually use:
+- `spring_backend_url`: Flask posts finalized records to this SpringBoot URL.
+  Leave it empty if you only want local JSON files.
+- `weights`: relative or absolute model path.
+- `confidence`: minimum confidence threshold.
+- `image_size`: YOLO inference image size.
+- `device`: leave empty for CPU/default; use `0` on CUDA/Jetson if supported.
+
+### OCR configuration
 
 ```yaml
-backend: opencv
-source: 0
-extra:
-  api_preference: auto
-  buffer_size: 1
+detection:
+  ocr:
+    enabled: true
+    backend: pytesseract
+    language: eng
+    digit_regex: "\\d+(?:\\.\\d+)?"
+    easyocr_gpu: false
+```
+
+- `backend`: `pytesseract`, `easyocr`, or `none`.
+- `language`: OCR language code.
+- `digit_regex`: extracts the numeric weight from OCR text.
+- `easyocr_gpu`: set `true` only when EasyOCR GPU runtime is installed.
+
+### Windows USB camera configuration
+
+Windows USB cameras usually use the OpenCV backend:
+
+```yaml
+cameras:
+  - name: entrance
+    role: intake_area
+    backend: opencv
+    enabled: true
+    source: 0
+    width: 1280
+    height: 720
+    fps: 30
+    reconnect_interval_seconds: 2
+    read_sleep_seconds: 0.01
+    extra:
+      api_preference: auto
+      buffer_size: 1
+
+  - name: scale
+    role: scale_display
+    backend: opencv
+    enabled: true
+    source: 1
+    width: 1280
+    height: 720
+    fps: 30
+    reconnect_interval_seconds: 2
+    read_sleep_seconds: 0.01
+    extra:
+      api_preference: auto
+      buffer_size: 1
 ```
 
 If a Windows test machine only has one camera, disable the missing second camera
 or point it to a real RTSP stream. Otherwise OpenCV may repeatedly log backend
-warnings such as invalid/null capture handles while trying to reconnect.
-
-RTSP push/relay streams can use the same OpenCV backend:
+warnings such as invalid/null capture handles while trying to reconnect:
 
 ```yaml
-backend: opencv
-source: "rtsp://user:password@192.168.1.10:554/stream1"
-extra:
-  api_preference: ffmpeg
-  buffer_size: 1
-  open_timeout_msec: 5000
-  read_timeout_msec: 5000
+  - name: scale
+    role: scale_display
+    backend: opencv
+    enabled: false
+    source: 1
 ```
 
-Jetson CSI cameras use:
+### RTSP stream configuration
+
+If you push camera streams to the detection device, configure `source` as the
+RTSP URL. The OpenCV backend will use FFmpeg:
 
 ```yaml
-backend: gstreamer
-source: 0
-extra:
-  flip_method: 0
+cameras:
+  - name: entrance
+    role: intake_area
+    backend: opencv
+    enabled: true
+    source: "rtsp://user:password@192.168.1.10:554/stream1"
+    width: 1280
+    height: 720
+    fps: 25
+    reconnect_interval_seconds: 2
+    read_sleep_seconds: 0.01
+    extra:
+      api_preference: ffmpeg
+      buffer_size: 1
+      open_timeout_msec: 5000
+      read_timeout_msec: 5000
+
+  - name: scale
+    role: scale_display
+    backend: opencv
+    enabled: true
+    source: "rtsp://user:password@192.168.1.11:554/stream1"
+    width: 1920
+    height: 1080
+    fps: 25
+    reconnect_interval_seconds: 2
+    read_sleep_seconds: 0.01
+    extra:
+      api_preference: ffmpeg
+      buffer_size: 1
+      open_timeout_msec: 5000
+      read_timeout_msec: 5000
+```
+
+You can verify RTSP independently with VLC or FFmpeg before starting Flask.
+
+### Jetson CSI camera configuration
+
+Jetson CSI cameras use the GStreamer backend:
+
+```yaml
+cameras:
+  - name: entrance
+    role: intake_area
+    backend: gstreamer
+    enabled: true
+    source: 0
+    width: 1280
+    height: 720
+    fps: 30
+    reconnect_interval_seconds: 2
+    read_sleep_seconds: 0.01
+    extra:
+      flip_method: 0
 ```
 
 For Jetson USB/RTSP cameras, provide a full GStreamer `pipeline` in `extra`.
 
-## Run
+## Run order
 
-Flask camera and inference service:
+Start services in this order during development.
+
+### 1. Start MySQL
+
+Make sure MySQL is running and accessible with the credentials in
+`backend/src/main/resources/application.yml` or the `MYSQL_*` environment
+variables.
+
+### 2. Start Flask camera and inference service
 
 ```bash
 python app.py
 ```
 
-SpringBoot record backend:
+Useful Flask checks:
+
+```text
+http://localhost:5000/api/health
+http://localhost:5000/api/cameras/status
+http://localhost:5000/api/cameras/entrance/stream
+http://localhost:5000/api/cameras/scale/stream
+```
+
+If a camera has not produced frames yet, the stream endpoint still returns a
+placeholder JPEG so the frontend does not show a broken image.
+
+### 3. Start SpringBoot record backend
 
 ```bash
 cd backend
@@ -158,10 +388,6 @@ export MYSQL_USERNAME="root"
 export MYSQL_PASSWORD="123456"
 ```
 
-The `intake_records` table is created automatically at startup if it does not
-exist. A matching schema is also kept at
-`backend/src/main/resources/mysql-schema.sql`.
-
 If `mvn spring-boot:run` only prints `Process terminated with exit code: 1`,
 scroll up to the first `Caused by:` line. The most common causes are:
 
@@ -170,7 +396,14 @@ scroll up to the first `Caused by:` line. The most common causes are:
 - The MySQL user cannot create the `canteen_intake` database or tables.
 - Port `9999` is already occupied.
 
-Vue frontend:
+Useful SpringBoot checks:
+
+```text
+http://localhost:9999/api/intake/cameras/status
+http://localhost:9999/api/intake-records
+```
+
+### 4. Start Vue frontend
 
 ```bash
 cd frontend
