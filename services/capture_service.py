@@ -8,7 +8,7 @@ import queue
 import threading
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -65,6 +65,7 @@ class CaptureService:
         self._ocr_thread: Optional[threading.Thread] = None
         self._yolo_detector = YoloDetector(detection_settings.yolo, project_root)
         self._ocr_reader = OcrReader(detection_settings.ocr)
+        self._project_root = project_root
         self._pending_results: Dict[str, Dict[str, Any]] = {}
         self._pending_lock = threading.RLock()
         self._last_result: Optional[Dict[str, Any]] = None
@@ -245,10 +246,30 @@ class CaptureService:
 
     def _run_yolo(self, job: DetectionJob) -> Dict[str, Any]:
         output_path = job.batch_dir / "entrance_yolo.jpg"
-        return self._yolo_detector.detect(job.entrance_frame, output_path)
+        metadata = job.request.metadata or {}
+        weights = metadata.get("yolo_weight") or metadata.get("yolo_model")
+        confidence = metadata.get("confidence")
+        detector = self._yolo_detector
+        if weights or confidence is not None:
+            weights_path = str(weights) if weights else self._detection_settings.yolo.weights
+            if weights and not Path(weights_path).is_absolute() and "/" not in weights_path and "\\" not in weights_path:
+                weights_path = str(Path("weights") / weights_path)
+            settings = replace(
+                self._detection_settings.yolo,
+                weights=weights_path,
+                confidence=float(confidence) if confidence is not None else self._detection_settings.yolo.confidence,
+            )
+            detector = YoloDetector(settings, self._project_root)
+        return detector.detect(job.entrance_frame, output_path)
 
     def _run_ocr(self, job: DetectionJob) -> Dict[str, Any]:
-        return self._ocr_reader.read_weight(job.scale_frame)
+        metadata = job.request.metadata or {}
+        backend = metadata.get("ocr_backend") or metadata.get("ocr_model")
+        reader = self._ocr_reader
+        if backend:
+            settings = replace(self._detection_settings.ocr, backend=str(backend))
+            reader = OcrReader(settings)
+        return reader.read_weight(job.scale_frame)
 
     def _record_partial_result(self, job_id: str, key: str, value: Dict[str, Any]) -> None:
         final_result: Optional[Dict[str, Any]] = None
@@ -295,6 +316,7 @@ class CaptureService:
                 "ocr": ocr_result,
             },
             "metadata": job.request.metadata,
+            "storage_status": "pending_confirmation",
         }
         metadata_path = job.batch_dir / "metadata.json"
         metadata_path.write_text(

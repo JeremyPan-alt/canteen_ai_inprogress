@@ -18,3 +18,7 @@ server:
 
 flask:
   base-url: http://localhost:5000
+
+local:
+  sqlite:
+    path: ${LOCAL_SQLITE_PATH:data/local-intake.db}

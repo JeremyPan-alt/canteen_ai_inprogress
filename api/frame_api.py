@@ -45,7 +45,7 @@ def list_models() -> Response:
     return jsonify(
         {
             "weights": weights,
-            "ocr_backends": ["pytesseract", "easyocr", "none"],
+            "ocr_backends": ["paddleocr", "pytesseract", "easyocr", "none"],
         }
     )
 
@@ -227,7 +227,7 @@ def _json_payload() -> Dict[str, Any]:
 
 def _capture_metadata(payload: Dict[str, Any]) -> Dict[str, Any]:
     metadata = dict(payload.get("metadata") or {})
-    for key in ("supplier", "remark", "operator_id"):
+    for key in ("supplier", "remark", "operator_id", "yolo_weight", "yolo_model", "ocr_backend", "ocr_model", "confidence"):
         if key in payload:
             metadata[key] = payload[key]
     return metadata

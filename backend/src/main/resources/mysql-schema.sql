@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS intake_records (
   supplier VARCHAR(255),
   vegetables LONGTEXT,
   weight DECIMAL(10, 3),
+  storage_date VARCHAR(32),
   captured_at TIMESTAMP NULL,
   raw_json LONGTEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

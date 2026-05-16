@@ -7,7 +7,8 @@ runtime:
 detection:
   # Flask posts finalized intake JSON here after the YOLO and OCR workers both
   # finish. Leave empty to only write logs/snapshots/<batch_id>/metadata.json.
-  spring_backend_url: http://localhost:9999
+  # Leave empty so detection waits for frontend confirmation before local SQLite insert.
+  spring_backend_url:
   yolo:
     enabled: true
     weights: weights/vegetables.pt
@@ -17,11 +18,17 @@ detection:
     device:
   ocr:
     enabled: true
-    # Options: pytesseract, easyocr, none.
-    backend: pytesseract
-    language: eng
+    # Options: paddleocr, pytesseract, easyocr, none.
+    backend: paddleocr
+    language: ch
     digit_regex: "\\d+(?:\\.\\d+)?"
     easyocr_gpu: false
+    paddleocr_use_gpu: false
+    paddleocr_use_angle_cls: true
+    # Optional custom PaddleOCR model directories.
+    paddleocr_det_model_dir:
+    paddleocr_rec_model_dir:
+    paddleocr_cls_model_dir:
 
 cameras:
   # Windows/generic USB camera example. On Windows, api_preference=dshow usually

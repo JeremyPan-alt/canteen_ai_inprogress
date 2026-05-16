@@ -72,8 +72,9 @@ The system is split into three services:
    - posts finalized intake JSON to SpringBoot.
 2. **SpringBoot record service** (`backend/`)
    - proxies frontend capture commands to Flask;
-   - stores finalized intake records in MySQL;
-   - exposes list/update/delete APIs for the Vue table.
+   - stores operator-confirmed intake records in local SQLite;
+   - reads connected MySQL records by storage date;
+   - exposes list/update/delete APIs for the Vue tables.
 3. **Vue frontend** (`frontend/`)
    - shows live camera streams;
    - triggers manual/intrusion capture;
@@ -92,6 +93,13 @@ Optional AI dependencies on the machine that runs Flask inference:
 ```bash
 pip install -r requirements-ai.txt
 ```
+
+For the intended YOLOv11 + PaddleOCR setup:
+
+- Put YOLOv11 weights under `weights/`.
+- Install `ultralytics` for YOLO.
+- Install `paddleocr` and the PaddlePaddle runtime that matches your Windows,
+  Linux or Jetson environment.
 
 OpenCV installation differs by platform:
 
@@ -159,6 +167,21 @@ CREATE TABLE IF NOT EXISTS intake_records (
 The same table definition is kept in
 `backend/src/main/resources/mysql-schema.sql`.
 
+SpringBoot also creates a local SQLite database for operator-confirmed records:
+
+```text
+backend/data/local-intake.db
+```
+
+Override it with:
+
+```bash
+export LOCAL_SQLITE_PATH="data/local-intake.db"
+```
+
+SQLite records are written only after the frontend confirmation dialog is
+accepted.
+
 ## Configure cameras and AI
 
 All camera, YOLO, OCR and snapshot settings are in:
@@ -196,11 +219,16 @@ For example:
 weights/vegetables.pt
 ```
 
+Multiple model files can be placed in `weights/`; the frontend model dropdown
+reads this directory through `GET /api/models`. Supported suffixes are `.pt`,
+`.onnx`, and `.engine`.
+
 Then edit:
 
 ```yaml
 detection:
-  spring_backend_url: http://localhost:9999
+  # Leave empty when using frontend confirmation before SQLite insertion.
+  spring_backend_url:
   yolo:
     enabled: true
     weights: weights/vegetables.pt
@@ -222,16 +250,23 @@ detection:
 detection:
   ocr:
     enabled: true
-    backend: pytesseract
-    language: eng
+    backend: paddleocr
+    language: ch
     digit_regex: "\\d+(?:\\.\\d+)?"
     easyocr_gpu: false
+    paddleocr_use_gpu: false
+    paddleocr_use_angle_cls: true
+    paddleocr_det_model_dir:
+    paddleocr_rec_model_dir:
+    paddleocr_cls_model_dir:
 ```
 
-- `backend`: `pytesseract`, `easyocr`, or `none`.
+- `backend`: `paddleocr`, `pytesseract`, `easyocr`, or `none`.
 - `language`: OCR language code.
 - `digit_regex`: extracts the numeric weight from OCR text.
 - `easyocr_gpu`: set `true` only when EasyOCR GPU runtime is installed.
+- `paddleocr_*_model_dir`: optional custom PaddleOCR model directories.
+- `paddleocr_use_gpu`: set `true` only when PaddlePaddle GPU runtime is ready.
 
 ### Windows USB camera configuration
 
@@ -401,6 +436,7 @@ Useful SpringBoot checks:
 ```text
 http://localhost:9999/api/intake/cameras/status
 http://localhost:9999/api/intake-records
+http://localhost:9999/api/local-intake-records/session
 ```
 
 ### 4. Start Vue frontend
@@ -448,9 +484,14 @@ SpringBoot service:
 - `POST /api/intake/capture/intrusion`
 - `GET /api/intake/cameras/status`
 - `POST /api/intake-records`
-- `GET /api/intake-records`
+- `GET /api/intake-records?date=YYYY-MM-DD`
 - `PUT /api/intake-records/{id}`
 - `DELETE /api/intake-records/{id}`
+- `POST /api/local-intake-records`
+- `GET /api/local-intake-records/session`
+- `GET /api/local-intake-records`
+- `PUT /api/local-intake-records/{id}`
+- `DELETE /api/local-intake-records/{id}`
 
 Manual capture body example:
 
@@ -468,6 +509,18 @@ Manual capture body example:
 
 Snapshots are written under `logs/snapshots/<batch_id>/` with a `metadata.json`
 file that records camera metadata, YOLO detections, OCR weight, intake items and
-operator metadata. SpringBoot persists the finalized records to MySQL, and the
-Vue records table supports editing incorrect vegetable/weight/operator/supplier
-data through the update endpoint.
+operator metadata.
+
+The normal operator workflow is:
+
+1. Select the YOLO target detection model and OCR backend in the top toolbar.
+2. Click `拍照识别` or let intrusion detection trigger capture.
+3. Flask reads latest-frame buffers and runs YOLO + OCR worker threads.
+4. The frontend polls `GET /api/capture/status` and opens a confirmation dialog
+   when the detection result is ready.
+5. The operator corrects vegetable names, weight, supplier, recorder or storage
+   date if needed.
+6. Clicking `确认录入 SQLite` writes the confirmed record to local SQLite.
+7. The lower-left table shows local SQLite records confirmed during this app
+   session.
+8. The lower-right table queries connected MySQL records for the selected date.

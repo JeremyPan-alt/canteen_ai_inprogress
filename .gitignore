@@ -6,5 +6,6 @@ venv/
 frontend/node_modules/
 frontend/dist/
 backend/target/
+backend/data/
 logs/*
 !logs/.gitkeep

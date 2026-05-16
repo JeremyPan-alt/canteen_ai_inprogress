@@ -13,6 +13,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -44,12 +45,14 @@ public class IntakeRecordRepository {
                       supplier VARCHAR(255),
                       vegetables LONGTEXT,
                       weight DECIMAL(10, 3),
+                      storage_date VARCHAR(32),
                       captured_at TIMESTAMP NULL,
                       raw_json LONGTEXT,
                       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
                     """);
+            addColumnIfMissing("ALTER TABLE intake_records ADD COLUMN storage_date VARCHAR(32)");
         } catch (Exception exc) {
             throw new IllegalStateException(
                     "Failed to initialize MySQL table 'intake_records'. "
@@ -60,14 +63,25 @@ public class IntakeRecordRepository {
         }
     }
 
+    private void addColumnIfMissing(String sql) {
+        try {
+            jdbcTemplate.execute(sql);
+        } catch (Exception ignored) {
+            // MySQL reports duplicate-column errors when the migration was already applied.
+        }
+    }
+
     public IntakeRecord save(IntakeRecord record) {
         if (record.getId() == null || record.getId().isBlank()) {
             record.setId(UUID.randomUUID().toString());
         }
+        if (record.getStorageDate() == null || record.getStorageDate().isBlank()) {
+            record.setStorageDate(LocalDate.now().toString());
+        }
         jdbcTemplate.update("""
                         INSERT INTO intake_records
-                          (id, job_id, batch_id, trigger_type, recorded_by, supplier, vegetables, weight, captured_at, raw_json)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                          (id, job_id, batch_id, trigger_type, recorded_by, supplier, vegetables, weight, storage_date, captured_at, raw_json)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON DUPLICATE KEY UPDATE
                           job_id = VALUES(job_id),
                           batch_id = VALUES(batch_id),
@@ -76,6 +90,7 @@ public class IntakeRecordRepository {
                           supplier = VALUES(supplier),
                           vegetables = VALUES(vegetables),
                           weight = VALUES(weight),
+                          storage_date = VALUES(storage_date),
                           captured_at = VALUES(captured_at),
                           raw_json = VALUES(raw_json)
                         """,
@@ -87,6 +102,7 @@ public class IntakeRecordRepository {
                 record.getSupplier(),
                 toJson(record.getVegetables()),
                 record.getWeight(),
+                record.getStorageDate(),
                 Timestamp.from(record.getCapturedAt()),
                 toJson(record.getRawJson()));
         return record;
@@ -104,6 +120,14 @@ public class IntakeRecordRepository {
         return jdbcTemplate.query(
                 "SELECT * FROM intake_records ORDER BY captured_at DESC, updated_at DESC",
                 rowMapper
+        );
+    }
+
+    public List<IntakeRecord> findByStorageDate(String storageDate) {
+        return jdbcTemplate.query(
+                "SELECT * FROM intake_records WHERE storage_date = ? ORDER BY captured_at DESC, updated_at DESC",
+                rowMapper,
+                storageDate
         );
     }
 
@@ -132,6 +156,7 @@ public class IntakeRecordRepository {
         }, new ArrayList<>()));
         double weight = rs.getDouble("weight");
         record.setWeight(rs.wasNull() ? null : weight);
+        record.setStorageDate(rs.getString("storage_date"));
         Timestamp capturedAt = rs.getTimestamp("captured_at");
         record.setCapturedAt(capturedAt == null ? Instant.now() : capturedAt.toInstant());
         record.setRawJson(fromJson(rs.getString("raw_json"), new TypeReference<Map<String, Object>>() {

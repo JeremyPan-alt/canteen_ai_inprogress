@@ -2,7 +2,7 @@ package com.canteen.intake.controller;
 
 import com.canteen.intake.model.ApiResponse;
 import com.canteen.intake.model.IntakeRecord;
-import com.canteen.intake.repository.IntakeRecordRepository;
+import com.canteen.intake.repository.LocalSqliteIntakeRecordRepository;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -10,17 +10,16 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/intake-records")
-public class IntakeRecordController {
-    private final IntakeRecordRepository repository;
+@RequestMapping("/api/local-intake-records")
+public class LocalIntakeRecordController {
+    private final LocalSqliteIntakeRecordRepository repository;
 
-    public IntakeRecordController(IntakeRecordRepository repository) {
+    public LocalIntakeRecordController(LocalSqliteIntakeRecordRepository repository) {
         this.repository = repository;
     }
 
@@ -30,18 +29,13 @@ public class IntakeRecordController {
     }
 
     @GetMapping
-    public ApiResponse<List<IntakeRecord>> list(@RequestParam(required = false) String date) {
-        if (date != null && !date.isBlank()) {
-            return ApiResponse.ok(repository.findByStorageDate(date));
-        }
+    public ApiResponse<List<IntakeRecord>> list() {
         return ApiResponse.ok(repository.findAll());
     }
 
-    @GetMapping("/{id}")
-    public ApiResponse<IntakeRecord> get(@PathVariable String id) {
-        return repository.findById(id)
-                .map(ApiResponse::ok)
-                .orElseGet(() -> ApiResponse.error("record not found"));
+    @GetMapping("/session")
+    public ApiResponse<List<IntakeRecord>> sessionRecords() {
+        return ApiResponse.ok(repository.findSessionRecords());
     }
 
     @PutMapping("/{id}")

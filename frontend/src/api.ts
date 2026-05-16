@@ -10,6 +10,7 @@ export interface IntakeRecord {
   vegetables: string[];
   weight?: number;
   capturedAt: string;
+  storageDate?: string;
   rawJson?: unknown;
 }
 
@@ -31,11 +32,11 @@ const flask = axios.create({
 });
 
 export function triggerManualCapture(payload: CapturePayload) {
-  return spring.post('/intake/capture/manual', payload);
+  return flask.post('/capture/manual', payload);
 }
 
 export function triggerIntrusionCapture(payload: CapturePayload) {
-  return spring.post('/intake/capture/intrusion', payload);
+  return flask.post('/capture/intrusion', payload);
 }
 
 export function getCameraStatus() {
@@ -50,8 +51,22 @@ export function getModelOptions() {
   return flask.get('/models');
 }
 
+export function getMysqlRecords(date?: string) {
+  return spring.get('/intake-records', {
+    params: date ? { date } : undefined,
+  });
+}
+
+export function getLocalSessionRecords() {
+  return spring.get('/local-intake-records/session');
+}
+
+export function createLocalRecord(record: IntakeRecord) {
+  return spring.post('/local-intake-records', record);
+}
+
 export function getRecords() {
-  return spring.get('/intake-records');
+  return getMysqlRecords();
 }
 
 export function deleteRecord(id: string) {

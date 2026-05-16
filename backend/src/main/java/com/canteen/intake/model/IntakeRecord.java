@@ -31,6 +31,7 @@ public class IntakeRecord {
     private String supplier;
     private List<String> vegetables = new ArrayList<>();
     private Double weight;
+    private String storageDate;
 
     @JsonAlias("captured_at")
     @JsonFormat(shape = JsonFormat.Shape.STRING)
@@ -116,6 +117,15 @@ public class IntakeRecord {
 
     public void setWeight(Double weight) {
         this.weight = weight;
+    }
+
+    public String getStorageDate() {
+        return storageDate;
+    }
+
+    @JsonAlias("storage_date")
+    public void setStorageDate(String storageDate) {
+        this.storageDate = storageDate;
     }
 
     public Instant getCapturedAt() {

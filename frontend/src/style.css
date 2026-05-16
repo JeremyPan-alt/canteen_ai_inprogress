@@ -50,6 +50,12 @@ body {
   margin-bottom: 16px;
 }
 
+.record-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
 .card-header {
   display: flex;
   align-items: center;
@@ -68,8 +74,20 @@ body {
   margin-right: 6px;
 }
 
+.header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.scroll-panel {
+  height: 320px;
+  overflow: auto;
+}
+
 @media (max-width: 1100px) {
-  .camera-grid {
+  .camera-grid,
+  .record-grid {
     grid-template-columns: 1fr;
   }
 }

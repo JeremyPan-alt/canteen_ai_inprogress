@@ -24,11 +24,16 @@ class YoloSettings:
 
 @dataclass(frozen=True)
 class OcrSettings:
-    backend: str = "pytesseract"
+    backend: str = "paddleocr"
     language: str = "eng"
     enabled: bool = True
     digit_regex: str = r"\d+(?:\.\d+)?"
     easyocr_gpu: bool = False
+    paddleocr_use_gpu: bool = False
+    paddleocr_det_model_dir: Optional[str] = None
+    paddleocr_rec_model_dir: Optional[str] = None
+    paddleocr_cls_model_dir: Optional[str] = None
+    paddleocr_use_angle_cls: bool = True
 
 
 @dataclass(frozen=True)
@@ -50,11 +55,16 @@ class DetectionSettings:
                 enabled=bool(yolo_raw.get("enabled", True)),
             ),
             ocr=OcrSettings(
-                backend=str(ocr_raw.get("backend", "pytesseract")),
+                backend=str(ocr_raw.get("backend", "paddleocr")),
                 language=str(ocr_raw.get("language", "eng")),
                 enabled=bool(ocr_raw.get("enabled", True)),
                 digit_regex=str(ocr_raw.get("digit_regex", r"\d+(?:\.\d+)?")),
                 easyocr_gpu=bool(ocr_raw.get("easyocr_gpu", False)),
+                paddleocr_use_gpu=bool(ocr_raw.get("paddleocr_use_gpu", False)),
+                paddleocr_det_model_dir=ocr_raw.get("paddleocr_det_model_dir"),
+                paddleocr_rec_model_dir=ocr_raw.get("paddleocr_rec_model_dir"),
+                paddleocr_cls_model_dir=ocr_raw.get("paddleocr_cls_model_dir"),
+                paddleocr_use_angle_cls=bool(ocr_raw.get("paddleocr_use_angle_cls", True)),
             ),
             spring_backend_url=raw.get("spring_backend_url"),
         )
@@ -198,6 +208,7 @@ class OcrReader:
     def __init__(self, settings: OcrSettings) -> None:
         self._settings = settings
         self._easyocr_reader: Any = None
+        self._paddleocr_reader: Any = None
 
     def read_weight(self, frame: Any) -> Dict[str, Any]:
         started = time.perf_counter()
@@ -224,6 +235,8 @@ class OcrReader:
             return ""
         if backend == "easyocr":
             return self._read_with_easyocr(frame)
+        if backend == "paddleocr":
+            return self._read_with_paddleocr(frame)
         if backend == "pytesseract":
             return self._read_with_pytesseract(frame)
         raise RuntimeError(f"unsupported OCR backend: {self._settings.backend}")
@@ -253,6 +266,35 @@ class OcrReader:
 
         results = self._easyocr_reader.readtext(frame, detail=0, paragraph=False)
         return " ".join(str(item) for item in results).strip()
+
+    def _read_with_paddleocr(self, frame: Any) -> str:
+        if self._paddleocr_reader is None:
+            try:
+                from paddleocr import PaddleOCR  # type: ignore
+            except ImportError as exc:
+                raise RuntimeError("paddleocr is not installed; install requirements-ai.txt") from exc
+
+            kwargs: Dict[str, Any] = {
+                "lang": self._settings.language,
+                "use_gpu": self._settings.paddleocr_use_gpu,
+                "use_angle_cls": self._settings.paddleocr_use_angle_cls,
+                "show_log": False,
+            }
+            if self._settings.paddleocr_det_model_dir:
+                kwargs["det_model_dir"] = self._settings.paddleocr_det_model_dir
+            if self._settings.paddleocr_rec_model_dir:
+                kwargs["rec_model_dir"] = self._settings.paddleocr_rec_model_dir
+            if self._settings.paddleocr_cls_model_dir:
+                kwargs["cls_model_dir"] = self._settings.paddleocr_cls_model_dir
+            self._paddleocr_reader = PaddleOCR(**kwargs)
+
+        results = self._paddleocr_reader.ocr(frame, cls=self._settings.paddleocr_use_angle_cls)
+        texts: List[str] = []
+        for page in results or []:
+            for item in page or []:
+                if len(item) >= 2 and isinstance(item[1], (list, tuple)) and item[1]:
+                    texts.append(str(item[1][0]))
+        return " ".join(texts).strip()
 
     def _parse_weight(self, text: str) -> Optional[float]:
         match = re.search(self._settings.digit_regex, text)
