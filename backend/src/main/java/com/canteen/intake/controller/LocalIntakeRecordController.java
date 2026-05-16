@@ -2,6 +2,7 @@ package com.canteen.intake.controller;
 
 import com.canteen.intake.model.ApiResponse;
 import com.canteen.intake.model.IntakeRecord;
+import com.canteen.intake.repository.IntakeRecordRepository;
 import com.canteen.intake.repository.LocalSqliteIntakeRecordRepository;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,9 +19,14 @@ import java.util.List;
 @RequestMapping("/api/local-intake-records")
 public class LocalIntakeRecordController {
     private final LocalSqliteIntakeRecordRepository repository;
+    private final IntakeRecordRepository mysqlRepository;
 
-    public LocalIntakeRecordController(LocalSqliteIntakeRecordRepository repository) {
+    public LocalIntakeRecordController(
+            LocalSqliteIntakeRecordRepository repository,
+            IntakeRecordRepository mysqlRepository
+    ) {
         this.repository = repository;
+        this.mysqlRepository = mysqlRepository;
     }
 
     @PostMapping
@@ -38,6 +44,19 @@ public class LocalIntakeRecordController {
         return ApiResponse.ok(repository.findSessionRecords());
     }
 
+    @PostMapping("/upload-to-mysql")
+    public ApiResponse<UploadResult> uploadToMysql() {
+        List<IntakeRecord> records = repository.findSessionRecords();
+        for (IntakeRecord record : records) {
+            mysqlRepository.save(record);
+        }
+        List<String> uploadedIds = records.stream()
+                .map(IntakeRecord::getId)
+                .toList();
+        int deleted = repository.deleteByIds(uploadedIds);
+        return ApiResponse.ok(new UploadResult(records.size(), deleted));
+    }
+
     @PutMapping("/{id}")
     public ApiResponse<IntakeRecord> update(@PathVariable String id, @RequestBody IntakeRecord record) {
         return repository.update(id, record)
@@ -48,5 +67,8 @@ public class LocalIntakeRecordController {
     @DeleteMapping("/{id}")
     public ApiResponse<Boolean> delete(@PathVariable String id) {
         return ApiResponse.ok(repository.deleteById(id));
+    }
+
+    public record UploadResult(int uploadedCount, int clearedLocalCount) {
     }
 }

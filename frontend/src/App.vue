@@ -73,12 +73,18 @@
         <el-card class="records-card" shadow="hover">
           <template #header>
             <div class="card-header">
-              <span>本次已确认录入本机 SQLite 的条目</span>
-              <el-button size="small" @click="loadLocalSessionRecords">刷新</el-button>
+              <span>本机 SQLite 待上传条目</span>
+              <div class="header-actions">
+                <el-button size="small" @click="loadLocalSessionRecords">刷新</el-button>
+                <el-button size="small" type="primary" :disabled="localSessionRecords.length === 0" @click="uploadLocalData">
+                  数据入库
+                </el-button>
+              </div>
             </div>
           </template>
           <div class="scroll-panel">
-            <el-table :data="localSessionRecords" style="width: 100%">
+            <el-empty v-if="localSessionRecords.length === 0" :description="localEmptyText" />
+            <el-table v-else :data="localSessionRecords" style="width: 100%">
               <el-table-column prop="batchId" label="批次号" min-width="160" />
               <el-table-column prop="vegetables" label="菜品" min-width="150">
                 <template #default="scope">
@@ -183,7 +189,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import {
   createLocalRecord,
   deleteRecord,
@@ -194,6 +200,7 @@ import {
   getMysqlRecords,
   triggerIntrusionCapture,
   triggerManualCapture,
+  uploadLocalRecordsToMysql,
   updateRecord,
   type IntakeRecord,
 } from './api';
@@ -222,6 +229,7 @@ const cameraStatus = ref<Record<string, { connected: boolean; running: boolean }
 const pendingJobs = ref(0);
 const lastResult = ref<FlaskCaptureResult | null>(null);
 const localSessionRecords = ref<IntakeRecord[]>([]);
+const localEmptyText = ref('本地数据库暂无待上传数据');
 const mysqlRecords = ref<IntakeRecord[]>([]);
 const mysqlDate = ref<Date>(new Date());
 const handledResultJobIds = ref<Set<string>>(new Set());
@@ -400,8 +408,38 @@ async function confirmLocalInsert() {
   };
   await createLocalRecord(record);
   ElMessage.success('已确认并录入本机 SQLite');
+  localEmptyText.value = '本地数据库暂无待上传数据';
   confirmVisible.value = false;
   await loadLocalSessionRecords();
+}
+
+async function uploadLocalData() {
+  if (localSessionRecords.value.length === 0) {
+    ElMessage.info('本地数据库暂无待上传数据');
+    return;
+  }
+  try {
+    await ElMessageBox.confirm(
+      `确认将当前区域内 ${localSessionRecords.value.length} 条数据写入 MySQL，并清空本机待上传区吗？`,
+      '确认数据入库',
+      {
+        confirmButtonText: '确认入库',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    );
+    const response = await uploadLocalRecordsToMysql();
+    const uploadedCount = response.data?.data?.uploadedCount ?? 0;
+    localSessionRecords.value = [];
+    localEmptyText.value = '数据已入库，本地数据库暂无待上传数据';
+    ElMessage.success(`数据已入库，共写入 ${uploadedCount} 条`);
+    await Promise.allSettled([loadLocalSessionRecords(), loadMysqlRecords()]);
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      console.warn('数据入库失败', error);
+      ElMessage.error('数据入库失败，请检查 SpringBoot 和 MySQL 连接');
+    }
+  }
 }
 
 function openEditDialog(row: IntakeRecord) {

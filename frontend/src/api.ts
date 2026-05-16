@@ -65,6 +65,10 @@ export function createLocalRecord(record: IntakeRecord) {
   return spring.post('/local-intake-records', record);
 }
 
+export function uploadLocalRecordsToMysql() {
+  return spring.post('/local-intake-records/upload-to-mysql');
+}
+
 export function getRecords() {
   return getMysqlRecords();
 }

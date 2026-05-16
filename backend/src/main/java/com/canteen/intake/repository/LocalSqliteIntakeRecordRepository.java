@@ -136,6 +136,28 @@ public class LocalSqliteIntakeRecordRepository {
         }
     }
 
+    public int deleteByIds(List<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return 0;
+        }
+        try (Connection connection = openConnection();
+             PreparedStatement statement = connection.prepareStatement("DELETE FROM local_intake_records WHERE id = ?")) {
+            for (String id : ids) {
+                statement.setString(1, id);
+                statement.addBatch();
+            }
+            int deleted = 0;
+            for (int count : statement.executeBatch()) {
+                if (count > 0) {
+                    deleted += count;
+                }
+            }
+            return deleted;
+        } catch (SQLException exc) {
+            throw new IllegalStateException("Failed to delete uploaded local SQLite intake records", exc);
+        }
+    }
+
     private Connection openConnection() throws SQLException {
         return DriverManager.getConnection("jdbc:sqlite:" + sqlitePath);
     }

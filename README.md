@@ -157,6 +157,7 @@ CREATE TABLE IF NOT EXISTS intake_records (
   supplier VARCHAR(255),
   vegetables LONGTEXT,
   weight DECIMAL(10, 3),
+  storage_date VARCHAR(32),
   captured_at TIMESTAMP NULL,
   raw_json LONGTEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -181,6 +182,29 @@ export LOCAL_SQLITE_PATH="data/local-intake.db"
 
 SQLite records are written only after the frontend confirmation dialog is
 accepted.
+
+Local SQLite table schema:
+
+```sql
+CREATE TABLE IF NOT EXISTS local_intake_records (
+  id TEXT PRIMARY KEY,
+  job_id TEXT,
+  batch_id TEXT NOT NULL,
+  trigger_type TEXT,
+  recorded_by TEXT,
+  supplier TEXT,
+  vegetables TEXT,
+  weight REAL,
+  storage_date TEXT,
+  captured_at TEXT,
+  raw_json TEXT,
+  created_at_millis INTEGER NOT NULL,
+  updated_at_millis INTEGER NOT NULL
+);
+```
+
+When the operator clicks `数据入库`, the current local pending records are
+inserted into MySQL through SpringBoot and then deleted from local SQLite.
 
 ## Configure cameras and AI
 
@@ -490,6 +514,7 @@ SpringBoot service:
 - `POST /api/local-intake-records`
 - `GET /api/local-intake-records/session`
 - `GET /api/local-intake-records`
+- `POST /api/local-intake-records/upload-to-mysql`
 - `PUT /api/local-intake-records/{id}`
 - `DELETE /api/local-intake-records/{id}`
 
@@ -523,4 +548,7 @@ The normal operator workflow is:
 6. Clicking `确认录入 SQLite` writes the confirmed record to local SQLite.
 7. The lower-left table shows local SQLite records confirmed during this app
    session.
-8. The lower-right table queries connected MySQL records for the selected date.
+8. Clicking `数据入库` writes all rows currently shown in the lower-left table to
+   MySQL and clears the local pending table. The area then displays
+   `数据已入库，本地数据库暂无待上传数据`.
+9. The lower-right table queries connected MySQL records for the selected date.
